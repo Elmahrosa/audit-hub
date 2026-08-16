@@ -1,7 +1,7 @@
 {
   "org": "Elmahrosa",
-  "generated_at": "2026-08-16T16:40:01.756Z",
-  "generated_epoch": 1786898401,
+  "generated_at": "2026-08-16T16:52:16.733Z",
+  "generated_epoch": 1786899136,
   "weeks": 12,
   "repos_total": 86,
   "repos_audited": 85,
@@ -43,7 +43,7 @@
       0,
       0,
       1,
-      2,
+      1,
       4,
       3,
       0,
@@ -79,8 +79,7 @@
     ]
   },
   "sources": {
-    "repo_files": 0,
-    "derived": 71,
-    "repo-file": 14
+    "repo-file": 14,
+    "derived": 71
   }
 }

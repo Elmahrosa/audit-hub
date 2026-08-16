@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Audit Hub — Elmahrosa Org</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1><span class="dot">⬢</span> Audit Hub</h1>
+      <div class="subtitle">Automated health audit of the <b>Elmahrosa</b> org repositories</div>
+    </div>
+    <div class="actions">
+      <button id="theme-btn">☾ Dark</button>
+      <span class="badge" id="updated-badge"><span class="pulse"></span><span id="updated-text">loading…</span></span>
+      <button id="refresh-btn">↻ Refresh</button>
+    </div>
+  </header>
+
+  <div id="error"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="cards" id="tier-cards"></div>
+
+  <div class="panel">
+    <h2>Trajectories — avg weekly commits by tier</h2>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <h2 style="margin:0">Repositories</h2>
+      <div class="spacer"></div>
+      <input type="text" id="search" placeholder="Filter…" />
+      <select id="tier-filter">
+        <option value="all">All tiers</option>
+        <option value="1">Tier 1</option>
+        <option value="2">Tier 2</option>
+        <option value="3">Tier 3</option>
+        <option value="4">Tier 4</option>
+      </select>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Repository</th><th>Tier</th><th>Health</th><th>Language</th>
+          <th>Commits 90d</th><th>Issues</th><th>Last push</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>

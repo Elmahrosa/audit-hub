@@ -1,0 +1,45 @@
+name: audit-aggregate
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  AUDIT_HUB_ORG: Elmahrosa
+  AUDIT_HUB_PAT: ${{ secrets.AUDIT_HUB_PAT }}
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Aggregate audit data
+        run: node scripts/aggregate.mjs
+
+      - name: Commit refreshed data
+        run: |
+          git config user.name "audit-hub-bot"
+          git config user.email "actions@github.com"
+          git add docs/data/
+          if git diff --cached --quiet; then
+            echo "No data changes; skipping commit"
+          else
+            git commit -m "chore: refresh audit-hub data [skip ci]"
+            git push "https://x-access-token:${AUDIT_HUB_PAT}@github.com/${GITHUB_REPOSITORY}.git" HEAD:main
+            echo "Committed and pushed refreshed audit data"
+          fi

@@ -1,10 +1,14 @@
 {
   "org": "Elmahrosa",
-  "generated_at": "2026-08-16T19:23:07.921Z",
-  "generated_epoch": 1786908187,
+  "generated_at": "2026-08-16T19:38:43.994Z",
+  "generated_epoch": 1786909123,
   "weeks": 12,
   "repos_total": 86,
+  "organization_total": 86,
+  "active_repos": 37,
+  "archived_repos": 48,
   "repos_audited": 85,
+  "audited_repos": 85,
   "successful": 85,
   "failed": 0,
   "failed_repos": [],
@@ -13,6 +17,18 @@
     "2": 14,
     "3": 24,
     "4": 35
+  },
+  "active_counts_by_tier": {
+    "1": 12,
+    "2": 13,
+    "3": 11,
+    "4": 1
+  },
+  "archived_counts_by_tier": {
+    "1": 0,
+    "2": 1,
+    "3": 13,
+    "4": 34
   },
   "labels": {
     "1": "Ready",
@@ -78,6 +94,66 @@
       0
     ]
   },
+  "active_trajectory_by_tier": {
+    "1": [
+      4,
+      3,
+      11,
+      2,
+      1,
+      0,
+      0,
+      8,
+      0,
+      4,
+      8,
+      4
+    ],
+    "2": [
+      2,
+      2,
+      2,
+      2,
+      0,
+      0,
+      1,
+      2,
+      1,
+      0,
+      0,
+      1
+    ],
+    "3": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "4": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  },
+  "inventory_scope": "all audited repositories, including archived",
+  "active_scope": "non-archived repositories only",
   "sources": {
     "repo-file": 14,
     "derived": 71

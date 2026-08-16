@@ -188,6 +188,8 @@ async function deriveRecord(r) {
     license,
     topics,
     archived: r.archived,
+    remediation_eligible: !r.archived,
+    action_required: !r.archived,
     default_branch: r.default_branch || "",
     pushed_at: r.pushed_at || "",
     pushed_days_ago: pushedDays,
@@ -227,6 +229,9 @@ async function auditRepo(r) {
   if (!merged.tier) merged.tier = tierOf(merged.health_score);
   if (!merged.checks) merged.checks = base.checks;
   if (!merged.trajectory) merged.trajectory = base.trajectory;
+  merged.archived = !!merged.archived;
+  merged.remediation_eligible = !merged.archived;
+  merged.action_required = !merged.archived;
   return merged;
 }
 
@@ -271,10 +276,20 @@ async function main() {
 
   records.sort((a, b) => b.health_score - a.health_score);
 
+  const archivedRecords = records.filter((r) => r.archived);
+  const activeRecords = records.filter((r) => !r.archived);
+
   const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
   for (const rec of records) counts[rec.tier]++;
 
+  const activeCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  for (const rec of activeRecords) activeCounts[rec.tier]++;
+
+  const archivedCounts = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  for (const rec of archivedRecords) archivedCounts[rec.tier]++;
+
   const trajByTier = {};
+  const activeTrajByTier = {};
   for (const t of [1, 2, 3, 4]) {
     const rows = records.filter((r) => r.tier === t);
     trajByTier[String(t)] = new Array(WEEKS).fill(0);
@@ -282,6 +297,15 @@ async function main() {
       for (let w = 0; w < WEEKS; w++) {
         trajByTier[String(t)][w] = Math.round(
           rows.reduce((a, r) => a + (r.trajectory[w] || 0), 0) / rows.length
+        );
+      }
+    }
+    const arows = activeRecords.filter((r) => r.tier === t);
+    activeTrajByTier[String(t)] = new Array(WEEKS).fill(0);
+    if (arows.length) {
+      for (let w = 0; w < WEEKS; w++) {
+        activeTrajByTier[String(t)][w] = Math.round(
+          arows.reduce((a, r) => a + (r.trajectory[w] || 0), 0) / arows.length
         );
       }
     }
@@ -293,13 +317,22 @@ async function main() {
     generated_epoch: Math.floor(Date.now() / 1000),
     weeks: WEEKS,
     repos_total: repos.length,
+    organization_total: repos.length,
+    active_repos: activeRecords.length,
+    archived_repos: archivedRecords.length,
     repos_audited: records.length,
+    audited_repos: records.length,
     successful: records.length,
     failed: failed.length,
     failed_repos: failed,
     counts_by_tier: counts,
+    active_counts_by_tier: activeCounts,
+    archived_counts_by_tier: archivedCounts,
     labels: TIER_LABELS,
     trajectory_by_tier: trajByTier,
+    active_trajectory_by_tier: activeTrajByTier,
+    inventory_scope: "all audited repositories, including archived",
+    active_scope: "non-archived repositories only",
     sources,
   };
 
@@ -313,6 +346,15 @@ async function main() {
       Object.entries(counts)
         .map(([t, n]) => `Tier ${t} (${TIER_LABELS[t]}): ${n}`)
         .join(" | ")
+  );
+  console.log(
+    `Active remediation tiers: ` +
+      Object.entries(activeCounts)
+        .map(([t, n]) => `Tier ${t} (${TIER_LABELS[t]}): ${n}`)
+        .join(" | ")
+  );
+  console.log(
+    `Inventory: ${records.length} audited (${activeRecords.length} active, ${archivedRecords.length} archived)`
   );
   console.log(`Sources: ${sources["repo-file"]} repo-file, ${sources.derived} derived`);
   console.log(`Wrote ${join(DATA_DIR, "org-latest.jsonl")} (${records.length} records) and meta.json`);

@@ -25,10 +25,15 @@
 
   <div class="stats" id="stats"></div>
 
+  <div class="view-toggle" role="tablist">
+    <button class="seg active" id="view-inventory" data-view="inventory" role="tab">Inventory — all audited (incl. archived)</button>
+    <button class="seg" id="view-active" data-view="active" role="tab">Active remediation</button>
+  </div>
+
   <div class="cards" id="tier-cards"></div>
 
   <div class="panel">
-    <h2>Trajectories — avg weekly commits by tier</h2>
+    <h2 id="chart-title">Trajectories — avg weekly commits by tier</h2>
     <div class="chart-box"><canvas id="chart"></canvas></div>
   </div>
 
@@ -49,7 +54,7 @@
       <thead>
         <tr>
           <th>Repository</th><th>Tier</th><th>Health</th><th>Language</th>
-          <th>Commits 90d</th><th>Issues</th><th>Last push</th>
+          <th>Commits 90d</th><th>Issues</th><th>Last push</th><th>Status</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>

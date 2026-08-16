@@ -5,8 +5,13 @@ let RECORDS = [];
 let activeTier = null;
 let chart = null;
 let WEEKS = 12;
+let view = "inventory";
 
 const $ = (id) => document.getElementById(id);
+
+function currentRecords() {
+  return view === "active" ? RECORDS.filter((r) => !r.archived) : RECORDS;
+}
 
 async function fetchData() {
   try {
@@ -55,10 +60,20 @@ function renderStats() {
   const avg = RECORDS.length
     ? Math.round(RECORDS.reduce((a, r) => a + r.health_score, 0) / RECORDS.length)
     : 0;
+  const audited = META ? (META.audited_repos ?? META.repos_audited ?? RECORDS.length) : RECORDS.length;
+  const orgTotal = META ? (META.organization_total ?? META.repos_total ?? audited + 1) : RECORDS.length + 1;
+  const archived = META
+    ? (META.archived_repos ?? RECORDS.filter((r) => r.archived).length)
+    : RECORDS.filter((r) => r.archived).length;
+  const active = META
+    ? (META.active_repos ?? RECORDS.filter((r) => !r.archived).length)
+    : RECORDS.filter((r) => !r.archived).length;
   const items = [
-    ["Repos audited", RECORDS.length, ""],
-    ["Successful", META ? META.successful : RECORDS.length, "var(--ok)"],
-    ["Failed", META ? META.failed : 0, "var(--danger)"],
+    ["Organization total", orgTotal, ""],
+    ["Active repos", active, "var(--ok)"],
+    ["Archived", archived, "var(--muted)"],
+    ["Audited", audited, ""],
+    ["Failed / skipped", META ? META.failed : 0, "var(--danger)"],
     ["Avg health", avg, "var(--accent)"],
   ];
   $("stats").innerHTML = items
@@ -67,12 +82,13 @@ function renderStats() {
 }
 
 function renderCards() {
+  const recs = currentRecords();
   const counts = { 1: 0, 2: 0, 3: 0, 4: 0 };
-  RECORDS.forEach((r) => { counts[r.tier] = (counts[r.tier] || 0) + 1; });
+  recs.forEach((r) => { counts[r.tier] = (counts[r.tier] || 0) + 1; });
   $("tier-cards").innerHTML = [1, 2, 3, 4]
     .map((t) => {
       const n = counts[t] || 0;
-      const pct = RECORDS.length ? Math.round((n / RECORDS.length) * 100) : 0;
+      const pct = recs.length ? Math.round((n / recs.length) * 100) : 0;
       const active = activeTier === t ? " active" : "";
       return `<div class="card tier-${t}${active}" data-tier="${t}">
         <h3>Tier ${t}</h3>
@@ -108,9 +124,14 @@ function renderChart() {
   const tickColor = getComputedStyle(document.documentElement).getPropertyValue("--chart-tick").trim();
   const gridColor = getComputedStyle(document.documentElement).getPropertyValue("--chart-grid").trim();
   const labels = weekLabels();
+  const traj = view === "active"
+    ? (META?.active_trajectory_by_tier || META?.trajectory_by_tier || {})
+    : (META?.trajectory_by_tier || {});
+  const title = $("chart-title");
+  if (title) title.textContent = `Trajectories — avg weekly commits by tier (${view === "active" ? "active remediation" : "inventory"})`;
   const datasets = [1, 2, 3, 4]
     .map((t) => {
-      const series = META?.trajectory_by_tier?.[String(t)] || [];
+      const series = traj[String(t)] || [];
       if (!series.length) return null;
       return {
         label: `Tier ${t} — ${TIER_LABELS[t]}`,
@@ -157,7 +178,7 @@ function scoreColor(s) {
 function renderRows() {
   const q = $("search").value.toLowerCase();
   const tf = $("tier-filter").value;
-  const rows = RECORDS.filter((r) => {
+  const rows = currentRecords().filter((r) => {
     const okTier = tf === "all" || String(r.tier) === tf;
     const okQ = !q || r.full_name.toLowerCase().includes(q) || (r.language || "").toLowerCase().includes(q);
     return okTier && okQ;
@@ -166,17 +187,30 @@ function renderRows() {
     ? rows.map((r) => {
         const p = r.pushed_at ? fmtAgo(Math.floor(new Date(r.pushed_at).getTime() / 1000)) : "—";
         const priv = r.private ? ' <span class="priv">private</span>' : "";
+        const arch = r.archived ? ' <span class="arch" title="Archived repository">archived</span>' : "";
+        const status = r.archived
+          ? '<span class="pill arch-pill">ARCHIVED</span><div class="arch-note">remediation eligible: no · action required: no</div>'
+          : '<span class="pill act-pill">ACTIVE</span><div class="arch-note">remediation eligible: yes</div>';
         return `<tr>
-          <td><a href="${r.url}" target="_blank" rel="noopener">${r.full_name}</a>${priv}</td>
+          <td><a href="${r.url}" target="_blank" rel="noopener">${r.full_name}</a>${arch}${priv}</td>
           <td><span class="pill t${r.tier}">T${r.tier} ${TIER_LABELS[r.tier]}</span></td>
           <td><div class="score-bar"><span class="bar"><i style="width:${r.health_score}%;background:${scoreColor(r.health_score)}"></i></span><span class="score-num">${r.health_score}</span></div></td>
           <td class="muted">${r.language || "—"}</td>
           <td>${r.commits_90d}</td>
           <td>${r.open_issues}</td>
           <td class="muted">${p}</td>
+          <td>${status}</td>
         </tr>`;
       }).join("")
-    : '<tr><td colspan="7" class="muted" style="text-align:center">No matching repositories</td></tr>';
+    : '<tr><td colspan="8" class="muted" style="text-align:center">No matching repositories</td></tr>';
+}
+
+function setView(v) {
+  view = v;
+  document.querySelectorAll(".seg").forEach((b) => b.classList.toggle("active", b.dataset.view === v));
+  renderCards();
+  renderChart();
+  renderRows();
 }
 
 function render() {
@@ -217,6 +251,8 @@ $("tier-filter").addEventListener("change", () => {
   renderCards();
   renderRows();
 });
+$("view-inventory").addEventListener("click", () => setView("inventory"));
+$("view-active").addEventListener("click", () => setView("active"));
 
 initTheme();
 fetchData();

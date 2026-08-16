@@ -1,7 +1,7 @@
 {
   "org": "Elmahrosa",
-  "generated_at": "2026-08-16T15:43:11.135Z",
-  "generated_epoch": 1786894991,
+  "generated_at": "2026-08-16T16:40:01.756Z",
+  "generated_epoch": 1786898401,
   "weeks": 12,
   "repos_total": 86,
   "repos_audited": 85,
@@ -9,10 +9,10 @@
   "failed": 0,
   "failed_repos": [],
   "counts_by_tier": {
-    "1": 8,
-    "2": 15,
-    "3": 26,
-    "4": 36
+    "1": 12,
+    "2": 14,
+    "3": 24,
+    "4": 35
   },
   "labels": {
     "1": "Ready",
@@ -22,18 +22,18 @@
   },
   "trajectory_by_tier": {
     "1": [
-      10,
-      9,
-      23,
-      15,
-      10,
-      8,
+      4,
       3,
-      14,
+      10,
+      2,
+      1,
       0,
-      6,
-      14,
-      8
+      0,
+      8,
+      0,
+      4,
+      8,
+      4
     ],
     "2": [
       2,
@@ -80,6 +80,7 @@
   },
   "sources": {
     "repo_files": 0,
-    "derived": 85
+    "derived": 71,
+    "repo-file": 14
   }
 }

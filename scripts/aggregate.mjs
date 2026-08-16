@@ -253,7 +253,7 @@ async function main() {
 
   const records = [];
   const failed = [];
-  const sources = { repo_files: 0, derived: 0 };
+  const sources = { "repo-file": 0, derived: 0 };
 
   await pool(targets, async (r) => {
     try {
@@ -314,7 +314,7 @@ async function main() {
         .map(([t, n]) => `Tier ${t} (${TIER_LABELS[t]}): ${n}`)
         .join(" | ")
   );
-  console.log(`Sources: ${sources.repo_files} repo-file, ${sources.derived} derived`);
+  console.log(`Sources: ${sources["repo-file"]} repo-file, ${sources.derived} derived`);
   console.log(`Wrote ${join(DATA_DIR, "org-latest.jsonl")} (${records.length} records) and meta.json`);
 }
 

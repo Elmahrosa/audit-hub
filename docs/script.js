@@ -6,6 +6,7 @@ let activeTier = null;
 let chart = null;
 let WEEKS = 12;
 let view = "inventory";
+let selectedRepo = null; // For drill-down view
 
 const $ = (id) => document.getElementById(id);
 
@@ -175,7 +176,196 @@ function scoreColor(s) {
   return "var(--t4)";
 }
 
+// Compliance signal functions
+function getLicenseSignal(repo) {
+  if (!repo.license || repo.license === "") {
+    return '<span class="signal missing">⚠ No License</span>';
+  }
+  // Common permissive licenses
+  const permissive = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"];
+  if (permissive.includes(repo.license)) {
+    return '<span class="signal good">✓ Permissive License</span>';
+  }
+  return '<span class="signal ok">ℹ License: ' + repo.license + '</span>';
+}
+
+function getDocsSignal(repo) {
+  const hasReadme = repo.checks?.has_readme ?? false;
+  const hasDescription = repo.checks?.has_description ?? false;
+  const richMetadata = repo.checks?.rich_metadata ?? false;
+
+  let score = 0;
+  if (hasReadme) score++;
+  if (hasDescription) score++;
+  if (richMetadata) score++;
+
+  if (score === 3) return '<span class="signal good">✓ Full Docs</span>';
+  if (score === 2) return '<span class="signal ok">⚠ Basic Docs</span>';
+  return '<span class="signal missing">⚠ Limited Docs</span>';
+}
+
+// CI badge function
+function getCiBadge(repo) {
+  const hasCi = repo.checks?.has_ci ?? false;
+  const recentPush = repo.checks?.recent_push ?? false;
+  const activeCommits = repo.checks?.active_commits ?? false;
+
+  // Simple CI status based on available data
+  if (hasCi && recentPush && activeCommits) {
+    return '<span class="badge ci-pass">✓ CI Configured</span>';
+  } else if (hasCi) {
+    return '<span class="badge ci-warn">⚠ CI Configured</span>';
+  } else {
+    return '<span class="badge ci-fail">✗ No CI</span>';
+  }
+}
+
+// Drill-down modal functions
+function openDrillDown(repo) {
+  selectedRepo = repo;
+  const modal = $("drilldown-modal");
+  const content = $("drilldown-content");
+
+  // Format the drill-down view
+  const pushedAt = repo.pushed_at ? new Date(repo.pushed_at) : null;
+  const pushedDaysAgo = repo.pushed_days_ago ?? "—";
+
+  content.innerHTML = `
+    <div class="drilldown-header">
+      <h2>${repo.full_name}</h2>
+      <button class="close-btn" onclick="closeDrillDown()">×</button>
+    </div>
+
+    <div class="drilldown-grid">
+      <div class="drilldown-section">
+        <h3>Overview</h3>
+        <p><strong>Description:</strong> ${repo.description || "No description"}</p>
+        <p><strong>Language:</strong> ${repo.language || "Not specified"}</p>
+        <p><strong>License:</strong> ${repo.license || "None"}</p>
+        <p><strong>Stars:</strong> ${repo.stars ?? 0} · <strong>Forks:</strong> ${repo.forks ?? 0}</p>
+        <p><strong>Primary Branch:</strong> ${repo.default_branch || "main"}</p>
+        <p><strong>Last Push:</strong> ${pushedAt ? pushedAt.toLocaleString() : "Unknown"} (${pushedDaysAgo} days ago)</p>
+        <p><strong>Open Issues:</strong> ${repo.open_issues ?? 0}</p>
+      </div>
+
+      <div class="drilldown-section">
+        <h3>Audit Status</h3>
+        <p><strong>Tier:</strong> T${repo.tier} ${TIER_LABELS[repo.tier]}</p>
+        <p><strong>Health Score:</strong>
+          <div class="score-bar">
+            <span class="bar"><i style="width:${repo.health_score}%;background:${scoreColor(repo.health_score)}"></i></span>
+            <span class="score-num">${repo.health_score}</span>
+          </div>
+        </p>
+        <p><strong>Remediation Eligible:</strong> ${repo.remediation_eligible ? "Yes" : "No"}</p>
+        <p><strong>Action Required:</strong> ${repo.action_required ? "Yes" : "No"}</p>
+        <p><strong>Archived:</strong> ${repo.archived ? "Yes" : "No"}</p>
+      </div>
+
+      <div class="drilldown-section">
+        <h3>Compliance Signals</h3>
+        ${getLicenseSignal(repo)}
+        ${getDocsSignal(repo)}
+      </div>
+
+      <div class="drilldown-section">
+        <h3>CI Status</h3>
+        ${getCiBadge(repo)}
+        <p><strong>CI Configured:</strong> ${repo.checks?.has_ci ? "Yes" : "No"}</p>
+        <p><strong>Recent Push:</strong> ${repo.checks?.recent_push ? "Yes" : "No"}</p>
+        <p><strong>Active Commits (90d):</strong> ${repo.checks?.active_commits ? "Yes" : "No"}</p>
+        <p><strong>Clean Issues:</strong> ${repo.checks?.clean_issues ? "Yes" : "No"}</p>
+        <p><strong>Rich Metadata:</strong> ${repo.checks?.rich_metadata ? "Yes" : "No"}</p>
+        <p><strong>Has Stars:</strong> ${repo.checks?.has_stars ? "Yes" : "No"}</p>
+      </div>
+
+      <div class="drilldown-section">
+        <h3>Activity Trajectory (Commits/Week)</h3>
+        <canvas id="repo-trajectory" width="300" height="150"></canvas>
+      </div>
+    </div>
+
+    <div class="drilldown-actions">
+      <button class="btn-primary" onclick="visitRepo()">Visit Repository</button>
+      <button class="btn-secondary" onclick="closeDrillDown()">Close</button>
+    </div>
+  `;
+
+  modal.style.display = "block";
+
+  // Render the trajectory chart for this repo
+  renderRepoTrajectoryChart(repo);
+}
+
+function closeDrillDown() {
+  selectedRepo = null;
+  $("drilldown-modal").style.display = "none";
+}
+
+function renderRepoTrajectoryChart(repo) {
+  const ctx = $("#repo-trajectory");
+  if (!ctx) return;
+
+  // Destroy existing chart if any
+  if (window.repoChart && typeof window.repoChart.destroy === 'function') {
+    window.repoChart.destroy();
+  }
+
+  const trajectory = repo.trajectory || [];
+  const labels = weekLabels();
+
+  window.repoChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Weekly Commits',
+        data: trajectory,
+        backgroundColor: 'var(--accent)',
+        borderColor: 'var(--accent)',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return `Week ${context.dataIndex + 1}: ${context.parsed.y} commits`;
+            }
+          }
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Commits' },
+          ticks: { stepSize: 1 }
+        },
+        x: {
+          title: { display: true, text: 'Weeks Ago' }
+        }
+      }
+    }
+  });
+}
+
+function visitRepo() {
+  if (selectedRepo && selectedRepo.url) {
+    window.open(selectedRepo.url, '_blank');
+  }
+}
+
 function renderRows() {
+  // If we have a selected repo for drill-down, show that view instead
+  if (selectedRepo) {
+    openDrillDown(selectedRepo);
+    return;
+  }
+
   const q = $("search").value.toLowerCase();
   const tf = $("tier-filter").value;
   const rows = currentRecords().filter((r) => {
@@ -183,6 +373,7 @@ function renderRows() {
     const okQ = !q || r.full_name.toLowerCase().includes(q) || (r.language || "").toLowerCase().includes(q);
     return okTier && okQ;
   });
+
   $("rows").innerHTML = rows.length
     ? rows.map((r) => {
         const p = r.pushed_at ? fmtAgo(Math.floor(new Date(r.pushed_at).getTime() / 1000)) : "—";
@@ -191,18 +382,26 @@ function renderRows() {
         const status = r.archived
           ? '<span class="pill arch-pill">ARCHIVED</span><div class="arch-note">remediation eligible: no · action required: no</div>'
           : '<span class="pill act-pill">ACTIVE</span><div class="arch-note">remediation eligible: yes</div>';
-        return `<tr>
-          <td><a href="${r.url}" target="_blank" rel="noopener">${r.full_name}</a>${arch}${priv}</td>
-          <td><span class="pill t${r.tier}">T${r.tier} ${TIER_LABELS[r.tier]}</span></td>
-          <td><div class="score-bar"><span class="bar"><i style="width:${r.health_score}%;background:${scoreColor(r.health_score)}"></i></span><span class="score-num">${r.health_score}</span></div></td>
-          <td class="muted">${r.language || "—"}</td>
-          <td>${r.commits_90d}</td>
-          <td>${r.open_issues}</td>
-          <td class="muted">${p}</td>
-          <td>${status}</td>
-        </tr>`;
+
+      return `<tr onclick="selectRepo('${r.full_name.replace(/'/g, "\\'")}')">
+        <td><a href="${r.url}" target="_blank" rel="noopener">${r.full_name}</a>${arch}${priv}</td>
+        <td><span class="pill t${r.tier}">T${r.tier} ${TIER_LABELS[r.tier]}</span></td>
+        <td><div class="score-bar"><span class="bar"><i style="width:${r.health_score}%;background:${scoreColor(r.health_score)}"></i></span><span class="score-num">${r.health_score}</span></div></td>
+        <td class="muted">${r.language || "—"}</td>
+        <td>${r.commits_90d}</td>
+        <td>${r.open_issues}</td>
+        <td class="muted">${p}</td>
+        <td>${status} ${getLicenseSignal(r)} ${getDocsSignal(r)} ${getCiBadge(r)}</td>
+      </tr>`;
       }).join("")
     : '<tr><td colspan="8" class="muted" style="text-align:center">No matching repositories</td></tr>';
+}
+
+function selectRepo(fullName) {
+  const repo = RECORDS.find(r => r.full_name === fullName);
+  if (repo) {
+    openDrillDown(repo);
+  }
 }
 
 function setView(v) {
@@ -230,7 +429,7 @@ function initTheme() {
 }
 
 function syncThemeBtn() {
-  const cur = document.documentElement.getAttribute("data-theme");
+  const cur = document.documentElement.getAttribute("data-theme") || "dark";
   $("theme-btn").textContent = cur === "dark" ? "☾ Dark" : "☀ Light";
 }
 
@@ -241,6 +440,10 @@ $("theme-btn").addEventListener("click", () => {
   localStorage.setItem("theme", next);
   syncThemeBtn();
   if (chart) renderChart();
+  // Also refresh repo chart if open
+  if (selectedRepo) {
+    renderRepoTrajectoryChart(selectedRepo);
+  }
 });
 
 $("refresh-btn").addEventListener("click", fetchData);
@@ -254,6 +457,36 @@ $("tier-filter").addEventListener("change", () => {
 $("view-inventory").addEventListener("click", () => setView("inventory"));
 $("view-active").addEventListener("click", () => setView("active"));
 
+// Initialize the drill-down modal if it doesn't exist
+function initDrillDownModal() {
+  if (!$("drilldown-modal")) {
+    const modal = document.createElement("div");
+    modal.id = "drilldown-modal";
+    modal.className = "modal";
+    modal.innerHTML = `
+      <div class="modal-content">
+        <div id="drilldown-content"></div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Close modal when clicking outside content
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        closeDrillDown();
+      }
+    });
+  }
+}
+
+// Close modal with Escape key
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    closeDrillDown();
+  }
+});
+
 initTheme();
+initDrillDownModal();
 fetchData();
 setInterval(tickUpdated, 30000);

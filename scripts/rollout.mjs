@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rolls out the per-repo self-audit workflow + dashboard to public org repos.
+// Rolls out the per-repo self-audit workflow + dashboard to org repos.
 // Skips repos that already have the files; enables GitHub Pages (main/docs).
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -47,11 +47,12 @@ async function gh(path, { method = "GET", body, okOnly = false } = {}) {
 
 const b64 = (s) => Buffer.from(s, "utf8").toString("base64");
 
-async function listPublicRepos() {
+async function listAllRepos() {
   const out = [];
   for (let page = 1; ; page++) {
-    const res = await gh(`/orgs/${ORG}/repos?per_page=100&page=${page}&type=public`);
-    if (!res.ok) throw new Error(`list public repos failed: HTTP ${res.status}`);
+    // Remove type=public to include both public and private repos
+    const res = await gh(`/orgs/${ORG}/repos?per_page=100&page=${page}`);
+    if (!res.ok) throw new Error(`list repos failed: HTTP ${res.status}`);
     const arr = await res.json();
     out.push(...arr);
     if (arr.length < 100) break;
@@ -60,7 +61,7 @@ async function listPublicRepos() {
 }
 
 async function fileExists(repo, path) {
-  const res = await gh(`/repos/${repo}/contents/${path}`);
+  const res = await gh(`/repos/${repo.full_name}/contents/${path}`);
   return res.status === 200;
 }
 
@@ -98,11 +99,20 @@ async function main() {
   const workflowPath = ".github/workflows/audit.yml";
   const dashboardPaths = ["docs/index.html", "docs/style.css", "docs/script.js"];
 
-  const repos = await listPublicRepos();
-  console.log(`Public repos to process (${ORG}): ${repos.length}`);
-  const summary = { created: 0, exists: 0, errored: [] };
+  // List all repos (both public and private)
+  const repos = await listAllRepos();
+  const publicRepos = repos.filter(r => !r.private);
+  const privateRepos = repos.filter(r => r.private);
 
-  for (const repo of repos) {
+  console.log(`Public repos to process (${ORG}): ${publicRepos.length}`);
+  console.log(`Private repos to process (${ORG}): ${privateRepos.length}`);
+  console.log(`Total repos to process: ${repos.length}`);
+
+  const summary = { created: 0, exists: 0, errored: [], publicProcessed: 0, privateProcessed: 0 };
+
+  // Process public repos first
+  console.log("\n=== Processing Public Repos ===");
+  for (const repo of publicRepos) {
     const line = [];
     line.push(`\n== ${repo.full_name} (branch: ${repo.default_branch}) ==`);
     const wf = await createFile(repo, workflowPath, template("audit.yml"));
@@ -123,9 +133,38 @@ async function main() {
     if (wf.startsWith("exists")) summary.exists++;
     if (wf.startsWith("error")) summary.errored.push(`${repo.full_name} (${wf})`);
     await sleep(300);
+    summary.publicProcessed++;
+  }
+
+  // Process private repos
+  console.log("\n=== Processing Private Repos ===");
+  for (const repo of privateRepos) {
+    const line = [];
+    line.push(`\n== ${repo.full_name} (branch: ${repo.default_branch}) [PRIVATE] ==`);
+    const wf = await createFile(repo, workflowPath, template("audit.yml"));
+    line.push(`  workflow: ${wf}`);
+    for (const p of dashboardPaths) {
+      const name = p.split("/").pop();
+      const result = await createFile(repo, p, template(name));
+      line.push(`  ${p}: ${result}`);
+    }
+    if (wf === "exists") {
+      line.push("  pages: skipped (workflow already present)");
+    } else {
+      const pg = await enablePages(repo);
+      line.push(`  pages: ${pg}`);
+    }
+    console.log(line.join("\n"));
+    if (wf.startsWith("created")) summary.created++;
+    if (wf.startsWith("exists")) summary.exists++;
+    if (wf.startsWith("error")) summary.errored.push(`${repo.full_name} (${wf})`);
+    await sleep(300);
+    summary.privateProcessed++;
   }
 
   console.log(`\n=== Rollout summary ===`);
+  console.log(`Public repos processed: ${summary.publicProcessed}`);
+  console.log(`Private repos processed: ${summary.privateProcessed}`);
   console.log(`workflow created: ${summary.created} | already present: ${summary.exists}`);
   if (summary.errored.length) {
     console.log(`errored:`);

@@ -1,0 +1,384 @@
+name: Tier Change Alerts
+
+on:
+  workflow_run:
+    workflows: [audit-aggregate]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  check-tier-changes:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Download audit data from workflow run
+        uses: actions/download-artifact@v4
+        with:
+          name: audit-data
+          workflow: ${{ github.event.workflow_run.id }}
+
+      - name: Configure git
+        run: |
+          git config user.name "audit-hub-bot"
+          git config user.email "actions@github.com"
+
+      - name: Load previous audit data
+        id: load-previous
+        run: |
+          # Try to get previous data from the main branch
+          if git show HEAD:docs/data/org-latest.jsonl > /tmp/previous.jsonl 2>/dev/null; then
+            echo "previous_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "previous_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compare tier changes
+        id: compare
+        if: steps.load-previous.outputs.previous_exists == 'true'
+        run: |
+          # Create a Node.js script to compare tier changes
+          cat > compare-tiers.js << 'EOF'
+          const fs = require('fs');
+          const { execSync } = require('child_process');
+
+          // Load current and previous data
+          const currentData = fs.readFileSync('docs/data/org-latest.jsonl', 'utf8')
+            .trim()
+            .split('\n')
+            .filter(line => line.trim() !== '')
+            .map(line => {
+              try { return JSON.parse(line); } catch (e) { return null; }
+            })
+            .filter(Boolean);
+
+          const previousDataRaw = fs.readFileSync('/tmp/previous.jsonl', 'utf8')
+            .trim()
+            .split('\n')
+            .filter(line => line.trim() !== '')
+            .map(line => {
+              try { return JSON.parse(line); } catch (e) { return null; }
+            })
+            .filter(Boolean);
+
+          // Create maps for easy lookup
+          const currentMap = new Map();
+          currentData.forEach(repo => {
+            currentMap.set(repo.full_name, repo);
+          });
+
+          const previousMap = new Map();
+          previousDataRaw.forEach(repo => {
+            previousMap.set(repo.full_name, repo);
+          });
+
+          // Find tier downgrades (higher number = worse tier)
+          const downgrades = [];
+          const upgrades = [];
+          const newRepos = [];
+
+          currentData.forEach(currentRepo => {
+            const fullName = currentRepo.full_name;
+            const previousRepo = previousMap.get(fullName);
+
+            if (!previousRepo) {
+              // New repo
+              newRepos.push(currentRepo);
+            } else if (currentRepo.tier > previousRepo.tier) {
+              // Downgraded (tier number increased)
+              downgrades.push({
+                repo: currentRepo,
+                previousTier: previousRepo.tier,
+                currentTier: currentRepo.tier,
+                change: currentRepo.tier - previousRepo.tier
+              });
+            } else if (currentRepo.tier < previousRepo.tier) {
+              // Upgraded (tier number decreased)
+              upgrades.push({
+                repo: currentRepo,
+                previousTier: previousRepo.tier,
+                currentTier: currentRepo.tier,
+                change: previousRepo.tier - currentRepo.tier
+              });
+            }
+          });
+
+          // Output results
+          console.log(`Found ${downgrades.length} tier downgrades`);
+          console.log(`Found ${upgrades.length} tier upgrades`);
+          console.log(`Found ${newRepos.length} new repositories`);
+
+          // Set outputs
+          const output = {
+            downgrades: downgrades.map(d => ({
+              full_name: d.repo.full_name,
+              previous_tier: d.previousTier,
+              current_tier: d.currentTier,
+              change: d.change,
+              health_score: d.repo.health_score
+            })),
+            upgrades: upgrades.map(u => ({
+              full_name: u.repo.full_name,
+              previous_tier: u.previousTier,
+              current_tier: u.currentTier,
+              change: u.change,
+              health_score: u.repo.health_score
+            })),
+            new_repos: newRepos.map(r => ({
+              full_name: r.full_name,
+              tier: r.tier,
+              health_score: r.health_score
+            }))
+          };
+
+          fs.writeFileSync('tier-changes.json', JSON.stringify(output, null, 2));
+          EOF
+
+          node compare-tiers.js
+
+      - name: Create issues for tier downgrades
+        if: steps.compare.outputs && contains(steps.compare.outputs, 'downgrades')
+        uses: actions/github-sdk@v0
+        with:
+          script: |
+            const { github, context } = require('@actions/github');
+            const fs = require('fs');
+
+            // Load tier changes
+            const changes = JSON.parse(fs.readFileSync('tier-changes.json', 'utf8'));
+
+            // Only proceed if we have downgrades
+            if (changes.downgrades.length === 0) {
+              console.log("No tier downgrades detected - no alerts needed");
+              return;
+            }
+
+            console.log(`Creating issues for ${changes.downgrades.length} tier downgrade(s)`);
+
+            // Create an issue for each significant downgrade (change of 2+ tiers or to critical tier)
+            for (const downgrade of changes.downgrades) {
+              // Only alert on significant changes: 2+ tier drops or dropping to critical tier (tier 4)
+              if (downgrade.change >= 2 || downgrade.current_tier === 4) {
+                const repoName = downgrade.full_name.split('/')[1];
+
+                let title = `📉 Tier Downgrade Alert: ${repoName}`;
+                if (downgrade.current_tier === 4) {
+                  title = `🚨 CRITICAL: ${repoName} dropped to Tier 4 (Critical)`;
+                }
+
+                let body = `## Tier Downgrade Detected\n\n`;
+                body += `**Repository:** ${downgrade.full_name}\n`;
+                body += `**Previous Tier:** T${downgrade.previous_tier} \n`;
+                body += `**Current Tier:** T${downgrade.current_tier} \n`;
+                body += `**Change:** ${downgrade.change} tier(s) worse\n`;
+                body += `**Current Health Score:** ${downgrade.health_score}/100\n\n`;
+
+                body += `### What this means\n`;
+                body += `- The repository's health score has decreased significantly\n`;
+                body += `- This may indicate declining maintenance, security issues, or other concerns\n`;
+                body += `- Review the repository to determine if remediation action is needed\n\n`;
+
+                body += `### Suggested actions\n`;
+                body += `1. Review the latest audit data in the audit-hub dashboard\n`;
+                body += `2. Check for recent changes in commits, issues, or project activity\n`;
+                body += `3. Determine if any remediation work is needed to improve the health score\n`;
+                body += `4. Consider if this is a temporary fluctuation or a longer-term trend\n\n`;
+
+                body += `---\n*This issue was automatically generated by the tier change alert workflow.*\n";
+
+                // Check if similar issue already exists open
+                try {
+                  const existingIssues = await github.rest.issues.listForRepo({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    state: 'open',
+                    labels: 'tier-alert'
+                  });
+
+                  // Check if we already have an open issue for this specific repo and tier change
+                  const existingIssue = existingIssues.data.find(issue =>
+                    issue.title.includes(downgrade.full_name) &&
+                    issue.title.includes(`T${downgrade.current_tier}`)
+                  );
+
+                  if (!existingIssue) {
+                    await github.rest.issues.create({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      title: title,
+                      body: body,
+                      labels: ['tier-alert', 'tier-downgrade', `tier-${downgrade.current_tier}`]
+                    });
+                    console.log(`Created issue for ${downgrade.full_name} tier downgrade`);
+                  } else {
+                    console.log(`Issue already exists open for ${downgrade.full_name} tier ${downgrade.current_tier}`);
+                  }
+                } catch (error) {
+                  console.error(`Error checking/creating issue for ${downgrade.full_name}:`, error.message);
+                  // Try to create the issue anyway
+                  try {
+                    await github.rest.issues.create({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      title: title,
+                      body: body,
+                      labels: ['tier-alert', 'tier-downgrade', `tier-${downgrade.current_tier}`]
+                    });
+                    console.log(`Created issue for ${downgrade.full_name} tier downgrade (after error)`);
+                  } catch (createError) {
+                    console.error(`Failed to create issue for ${downgrade.full_name}:`, createError.message);
+                  }
+                }
+              } else {
+                console.log(`Skipping minor downgrade for ${downgrade.full_name}: T${downgrade.previous_tier} → T${downgrade.current_tier}`);
+              }
+            }
+
+            // Also create a summary issue if there are multiple downgrades
+            if (changes.downgrades.length >= 3) {
+              const significantDowngrades = changes.downgrades.filter(d => d.change >= 2 || d.current_tier === 4);
+              if (significantDowngrades.length >= 2) {
+                try {
+                  const existingSummaryIssues = await github.rest.issues.listForRepo({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    state: 'open',
+                    labels: 'tier-summary'
+                  });
+
+                  const hasRecentSummary = existingSummaryIssues.data.some(issue =>
+                    issue.title.includes('Tier Downgrade Summary')
+                  );
+
+                  if (!hasRecentSummary) {
+                    const summaryTitle = `📊 Tier Downgrade Summary: ${significantDowngrades.length} repositories affected`;
+                    let summaryBody = `## Tier Downgrade Summary\n\n`;
+                    summaryBody += `Detected ${significantDowngrades.length} significant tier downgrades in the latest audit run.\n\n`;
+                    summaryBody += `### Affected Repositories\n\n`;
+
+                    for (const downgrade of significantDowngrades) {
+                      summaryBody += `- **${downgrade.full_name}**: T${downgrade.previous_tier} → T${downgrade.current_tier} `;
+                      summaryBody += `(${downgrade.change} tier(s) worse, Health: ${downgrade.health_score}/100)\n`;
+                    }
+
+                    summaryBody += `\n---\n*This summary was automatically generated by the tier change alert workflow.*\n`;
+
+                    await github.rest.issues.create({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      title: summaryTitle,
+                      body: summaryBody,
+                      labels: ['tier-alert', 'tier-summary']
+                    });
+                    console.log("Created tier downgrade summary issue");
+                  }
+                } catch (error) {
+                  console.error(`Error creating summary issue:`, error.message);
+                }
+              }
+            }
+
+      - name: Create issues for new repositories
+        if: steps.compare.outputs && contains(steps.compare.outputs, 'new_repos')
+        uses: actions/github-sdk@v0
+        with:
+          script: |
+            const { github, context } = require('@actions/github');
+            const fs = require('fs');
+
+            // Load tier changes
+            const changes = JSON.parse(fs.readFileSync('tier-changes.json', 'utf8'));
+
+            // Only proceed if we have new repos
+            if (changes.new_repos.length === 0) {
+              console.log("No new repositories detected");
+              return;
+            }
+
+            console.log(`Processing ${changes.new_repos.length} new repository(ies)`);
+
+            for (const newRepo of changes.new_repos) {
+              const repoName = newRepo.full_name.split('/')[1];
+
+              // Only alert on new repos that are not already in good standing
+              // Alert if new repo is tier 3 or worse (needs work or critical)
+              if (newRepo.tier >= 3) {
+                let title = `🆕 New Repository Alert: ${repoName}`;
+                if (newRepo.tier === 4) {
+                  title = `🚨 CRITICAL: New repository ${repoName} discovered at Tier 4`;
+                }
+
+                let body = `## New Repository Detected\n\n`;
+                body += `**Repository:** ${newRepo.full_name}\n`;
+                body += `**Initial Tier:** T${newRepo.tier} \n`;
+                body += `**Initial Health Score:** ${newRepo.health_score}/100\n\n`;
+
+                body += `### What this means\n`;
+                body += `A new repository has been discovered in the organization audit.\n`;
+                body += `The initial health score indicates the repository may need attention.\n\n`;
+
+                body += `### Suggested actions\n`;
+                body += `1. Review the repository to understand its purpose and current state\n`;
+                body += `2. Check if it has appropriate documentation, licensing, and CI/CD\n`;
+                body += `3. Determine if it should be included in regular audits\n`;
+                body += `4. If it's a temporary or experimental repo, consider archiving it\n\n`;
+
+                body += `---\n*This issue was automatically generated by the tier change alert workflow.*\n";
+
+                // Check if similar issue already exists open
+                try {
+                  const existingIssues = await github.rest.issues.listForRepo({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    state: 'open',
+                    labels: 'new-repo-alert'
+                  });
+
+                  const existingIssue = existingIssues.data.find(issue =>
+                    issue.title.includes(newRepo.full_name)
+                  );
+
+                  if (!existingIssue) {
+                    await github.rest.issues.create({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      title: title,
+                      body: body,
+                      labels: ['new-repo-alert', `tier-${newRepo.tier}`]
+                    });
+                    console.log(`Created issue for new repository ${newRepo.full_name}`);
+                  } else {
+                    console.log(`Issue already exists open for new repository ${newRepo.full_name}`);
+                  }
+                } catch (error) {
+                  console.error(`Error checking/creating issue for new repo ${newRepo.full_name}:`, error.message);
+                  // Try to create the issue anyway
+                  try {
+                    await github.rest.issues.create({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      title: title,
+                      body: body,
+                      labels: ['new-repo-alert', `tier-${newRepo.tier}`]
+                    });
+                    console.log(`Created issue for new repository ${newRepo.full_name} (after error)`);
+                  } catch (createError) {
+                    console.error(`Failed to create issue for new repository ${newRepo.full_name}:`, createError.message);
+                  }
+                }
+              } else {
+                console.log(`New repository ${newRepo.full_name} is in good standing (Tier ${newRepo.tier}) - no alert needed`);
+              }
+            }

@@ -1,28 +1,28 @@
 {
   "org": "Elmahrosa",
-  "generated_at": "2026-09-05T08:09:18.076Z",
-  "generated_epoch": 1788595758,
+  "generated_at": "2026-09-06T08:26:40.808Z",
+  "generated_epoch": 1788683200,
   "weeks": 12,
-  "repos_total": 88,
-  "organization_total": 88,
-  "active_repos": 39,
+  "repos_total": 89,
+  "organization_total": 89,
+  "active_repos": 40,
   "archived_repos": 48,
-  "repos_audited": 87,
-  "audited_repos": 87,
-  "successful": 87,
+  "repos_audited": 88,
+  "audited_repos": 88,
+  "successful": 88,
   "failed": 0,
   "failed_repos": [],
   "counts_by_tier": {
     "1": 9,
-    "2": 18,
-    "3": 25,
-    "4": 35
+    "2": 19,
+    "3": 24,
+    "4": 36
   },
   "active_counts_by_tier": {
     "1": 9,
-    "2": 17,
-    "3": 13,
-    "4": 0
+    "2": 18,
+    "3": 12,
+    "4": 1
   },
   "archived_counts_by_tier": {
     "1": 0,
@@ -38,15 +38,15 @@
   },
   "trajectory_by_tier": {
     "1": [
-      5,
+      4,
       1,
       0,
       0,
-      9,
-      1,
+      10,
+      0,
       5,
-      7,
-      8,
+      11,
+      5,
       1,
       1,
       0
@@ -55,15 +55,15 @@
       1,
       0,
       0,
-      0,
       1,
-      2,
+      1,
       3,
+      2,
       0,
       0,
       0,
       0,
-      1
+      2
     ],
     "3": [
       0,
@@ -96,32 +96,32 @@
   },
   "active_trajectory_by_tier": {
     "1": [
-      5,
+      4,
       1,
       0,
       0,
-      9,
-      1,
+      10,
+      0,
       5,
-      7,
-      8,
+      11,
+      5,
       1,
       1,
       0
     ],
     "2": [
-      2,
+      1,
       0,
       0,
       0,
       1,
       1,
-      1,
       0,
       0,
       0,
       0,
-      1
+      0,
+      2
     ],
     "3": [
       0,
@@ -135,7 +135,7 @@
       0,
       0,
       0,
-      2
+      1
     ],
     "4": [
       0,
@@ -149,13 +149,13 @@
       0,
       0,
       0,
-      0
+      1
     ]
   },
   "inventory_scope": "all audited repositories, including archived",
   "active_scope": "non-archived repositories only",
   "sources": {
     "repo-file": 14,
-    "derived": 73
+    "derived": 74
   }
 }

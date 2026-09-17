@@ -1,28 +1,28 @@
 {
   "org": "Elmahrosa",
-  "generated_at": "2026-09-16T09:09:11.999Z",
-  "generated_epoch": 1789549751,
+  "generated_at": "2026-09-17T09:17:27.156Z",
+  "generated_epoch": 1789636647,
   "weeks": 12,
-  "repos_total": 90,
-  "organization_total": 90,
-  "active_repos": 41,
+  "repos_total": 91,
+  "organization_total": 91,
+  "active_repos": 42,
   "archived_repos": 48,
-  "repos_audited": 89,
-  "audited_repos": 89,
-  "successful": 89,
+  "repos_audited": 90,
+  "audited_repos": 90,
+  "successful": 90,
   "failed": 0,
   "failed_repos": [],
   "counts_by_tier": {
     "1": 13,
     "2": 14,
     "3": 26,
-    "4": 36
+    "4": 37
   },
   "active_counts_by_tier": {
     "1": 13,
     "2": 13,
     "3": 14,
-    "4": 1
+    "4": 2
   },
   "archived_counts_by_tier": {
     "1": 0,
@@ -40,24 +40,24 @@
     "1": [
       0,
       0,
-      1,
-      1,
+      2,
+      0,
       0,
       7,
-      6,
-      2,
+      7,
       1,
       0,
-      1,
+      0,
+      2,
       2
     ],
     "2": [
-      1,
       0,
-      1,
-      6,
+      0,
+      2,
+      5,
       4,
-      1,
+      0,
       0,
       0,
       0,
@@ -98,22 +98,22 @@
     "1": [
       0,
       0,
-      1,
-      1,
+      2,
+      0,
       0,
       7,
-      6,
-      2,
+      7,
       1,
       0,
-      1,
+      0,
+      2,
       2
     ],
     "2": [
-      1,
       0,
       0,
-      5,
+      2,
+      4,
       0,
       0,
       0,
@@ -149,13 +149,13 @@
       0,
       0,
       1,
-      0
+      1
     ]
   },
   "inventory_scope": "all audited repositories, including archived",
   "active_scope": "non-archived repositories only",
   "sources": {
     "repo-file": 14,
-    "derived": 75
+    "derived": 76
   }
 }
